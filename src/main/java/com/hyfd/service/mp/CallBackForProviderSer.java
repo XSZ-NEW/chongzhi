@@ -1,21 +1,18 @@
 package com.hyfd.service.mp;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.util.ArrayList;
-import java.util.Enumeration;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
+import com.hyfd.common.utils.MapUtils;
+import com.hyfd.common.utils.SHA1;
+import com.hyfd.common.utils.ToolMD5;
+import com.hyfd.common.utils.XmlUtils;
+import com.hyfd.dao.mp.*;
+import com.hyfd.rabbitMq.RabbitMqProducer;
+import com.hyfd.rabbitMq.SerializeUtil;
+import com.hyfd.service.BaseService;
+import com.hyfd.task.JuHeBillOrderCallback;
+import com.hyfd.task.QianMiGongHuoBillOrderTask;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.log4j.Logger;
 import org.dom4j.Document;
@@ -26,24 +23,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONArray;
-import com.alibaba.fastjson.JSONObject;
-import com.hyfd.common.utils.MapUtils;
-import com.hyfd.common.utils.SHA1;
-import com.hyfd.common.utils.ToolMD5;
-import com.hyfd.common.utils.XmlUtils;
-import com.hyfd.dao.mp.ExceptionOrderDao;
-import com.hyfd.dao.mp.JuhegonghuoCustomerDao;
-import com.hyfd.dao.mp.OrderDao;
-import com.hyfd.dao.mp.OrderOtherDao;
-import com.hyfd.dao.mp.ProviderPhysicalChannelDao;
-import com.hyfd.dao.mp.QianmigonghuoCustomerDao;
-import com.hyfd.rabbitMq.RabbitMqProducer;
-import com.hyfd.rabbitMq.SerializeUtil;
-import com.hyfd.service.BaseService;
-import com.hyfd.task.JuHeBillOrderCallback;
-import com.hyfd.task.QianMiGongHuoBillOrderTask;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class CallBackForProviderSer extends BaseService
@@ -1967,6 +1955,68 @@ public class CallBackForProviderSer extends BaseService
 			}
 		} catch (Exception e) {
 			// TODO: handle exception
+			e.printStackTrace();
+		}
+		return "success";
+	}
+
+	/**
+	 * 云米优回调
+	 * @param request
+	 * @param response
+	 * @return
+	 */
+	public String YunMiYouBack(HttpServletRequest request, HttpServletResponse response) {
+
+		try {
+			String id = "2000000063";
+			Map<String,Object> channel = providerPhysicalChannelDao.selectByPrimaryKey(id);	//获取通道参数
+			String default_parameter = channel.get("default_parameter")+"";
+			Map<String,String> paramMap = XmlUtils.readXmlToMap(default_parameter);
+			String appSecret = paramMap.get("appSecret");
+			Map<String, Object> map = new HashMap<String, Object>();
+			//从rquest中获取参数
+			Enumeration keys = request.getParameterNames();
+			/**
+			 * 用于存放request请求中的参数
+			 */
+			Map<String, String> reqMap = new HashMap<String, String>();
+			while (keys.hasMoreElements()) {
+				String key = (String)keys.nextElement();
+				String value = request.getParameter(key);
+				reqMap.put(key, value);
+			}
+			//取出返回的标签
+			String sign = reqMap.get("sign")+"";
+			//进行验签，需要删除签名
+			reqMap.remove("sign");
+			String orderId = reqMap.get("outer_tid")+"";
+			String resultCode = reqMap.get("recharge_state")+"";
+			String providerOrderId = reqMap.get("tid")+"";
+			if (resultCode.equals("") || resultCode.equals("null")){
+				log.error("云米优回调 = " + reqMap + "查询订单为空");
+				return "fail";
+			}
+			log.error("云米优回调开始：回调信息[" + reqMap +"]");
+			map.put("orderId",orderId);
+			map.put("providerOrderId",providerOrderId);
+			map.put("resultCode",resultCode);
+			//将返回参数进行shal加密转16进制后与返回的sign进行对比,确保参数一致
+			if (SHA1.sign(reqMap,appSecret).equals(sign)){
+				//1充值成功  0失败
+				if (resultCode.equals("1")){
+					map.put("status","1");
+				}else {
+					map.put("status","0");
+				}
+			}else {
+				log.error("云米优验证签名失败"+reqMap);
+				return "fail";
+			}
+			if (map.containsKey("status")){
+				mqProducer.sendDataToQueue(RabbitMqProducer.Result_QueueKey, SerializeUtil.getStrFromObj(map));
+			}
+		} catch (Exception e) {
 			e.printStackTrace();
 		}
 		return "success";

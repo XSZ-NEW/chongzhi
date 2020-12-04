@@ -1,8 +1,7 @@
 package com.hyfd.controller.mp;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
+import com.hyfd.controller.sys.BaseController;
+import com.hyfd.service.mp.CallBackForProviderSer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -10,8 +9,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
 
-import com.hyfd.controller.sys.BaseController;
-import com.hyfd.service.mp.CallBackForProviderSer;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 
 @Controller
 public class CallBackForProviderCtl extends BaseController
@@ -299,5 +298,16 @@ public class CallBackForProviderCtl extends BaseController
     public String JiuYueBack(HttpServletRequest request, HttpServletResponse response)
     {
     	return callBackForProviderSer.JiuYueBack(request, response);
+    }
+    /**
+     * 云米优回调
+     * @param request
+     * @param response
+     * @return
+     */
+    @RequestMapping("/status/YunMiYou")
+    @ResponseBody
+    public String YunMiYou(HttpServletRequest request, HttpServletResponse response){
+        return callBackForProviderSer.YunMiYouBack(request, response);
     }
 }
